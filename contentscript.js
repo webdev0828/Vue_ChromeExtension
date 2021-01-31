@@ -530,7 +530,171 @@ const INIT = function() {
         // Create overrideable functions for the window to use instead
         // All this just to remove sidebar width offset.
         // (report bugs to support@airfolder.io)
-        const INITIAL_WINDOW_WIDTH = window.innerWidth; // Store initial values (until document.body shows up)      
+        const INITIAL_WINDOW_WIDTH = window.innerWidth; // Store initial values (until document.body shows up)
+        const windowFunctionsScript = document.createElement('script');
+        windowFunctionsScript.text = `(function() {
+            window.__airfolder_width = ${Sidebar.getWidth()};
+            const windowWidth = function() {
+                const offset = window.__airfolder_width || 0;
+                const d = window.document;
+                return d.body ? d.body.clientWidth : ${INITIAL_WINDOW_WIDTH} - offset;
+            };
+            window.__defineGetter__('innerWidth', windowWidth);
+            window.__defineGetter__('outerWidth', windowWidth);
+            window.document.documentElement.__defineGetter__('clientWidth', windowWidth);
+            window.document.documentElement.__defineGetter__('scrollWidth', windowWidth);
+            const wrapMouseEvent = function(mouseEvent) { // should be called with 'this'?
+                return new Proxy(mouseEvent, {
+                    get(target, prop, receiver) {
+                        if (prop === 'isTrusted') { // Can't mess with isTrusted
+                            return target[prop];
+                        }
+                        const descriptor = Object.getOwnPropertyDescriptor(receiver, prop); // Bind proxy
+                        const value = descriptor?.get?.call(receiver) || target[prop];
+                        if (typeof value === 'function') {
+                            return (...args) => value.apply(target, args);
+                        }
+                        if (prop === 'pageX' || prop === 'screenX' || prop === 'clientX') {
+                            return value - (window.__airfolder_width || 0);
+                        }
+                        return value;
+                    },
+                    set(target, prop, value) {
+                        target[prop] = value;
+                        return true;
+                    },
+                    getPrototypeOf: (target) => target.constructor.prototype,
+                });
+            };
+            const eventTypeFilter = new Set([
+                'mouseup', 'mousedown', 'mousemove', 'click', 'dblclick', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'contextmenu',
+                'lostpointercapture', 'pointerover', 'pointerenter', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerout', 'pointerleave',
+                // 'drag', 'dragend', 'dragenter', 'dragexit', 'dragleave', 'dragover', 'dragstart', 'drop',
+                // 'touchstart', 'touchend', 'touchmove', 'touchcancel'
+                // gestures
+            ]);
+            const listenerMap = new class {
+                root = new WeakMap();
+                set(compositeKey, value) {
+                    let map = this.root;
+                    let lastKey = compositeKey.pop();
+                    for (let key of compositeKey) {
+                        let next = map.get(key);
+                        if (!next) {
+                            next = new Map();
+                            map.set(key, next);
+                        }
+                        map = next;
+                    }
+                    map.set(lastKey, value);
+                }
+                get(compositeKey) {
+                    let next = this.root;
+                    for (let key of compositeKey) {
+                        if (!next.has(key)) {
+                            return undefined;
+                        }
+                        next = next.get(key);
+                    }
+                    return next;
+                }
+                delete(compositeKey) {
+                    let next = this.root;
+                    const deletePairs = [];
+                    for (let key of compositeKey) {
+                        if (!next.has(key)) {
+                            return false;
+                        }
+                        deletePairs.unshift([next, key]);
+                        next = next.get(key);
+                    }
+                    for (let [map, key] of deletePairs) {
+                        map.delete(key);
+                        if (map.size) {
+                            break;
+                        }
+                    }
+                    return true;
+                }
+            };
+            const wrapListener = function(thisArg, listener) {
+                const wrappedListener = (event, ...args) => {
+                    if (typeof listener !== 'undefined') {
+                        if (event instanceof MouseEvent) {
+                            const wrappedEvent = wrapMouseEvent(event);
+                            if (listener.handleEvent) {
+                                listener.handleEvent.call(listener, wrappedEvent, ...args);    
+                            } else {
+                                listener.call(thisArg, wrappedEvent, ...args);
+                            }
+                        } else {
+                            listener.call(thisArg, event, ...args);
+                        }
+                    }
+                };
+                if (listener.handleEvent) {
+                    return {
+                        handleEvent: wrappedListener,
+                    };
+                }
+                return wrappedListener;
+            };
+            EventTarget.prototype.addEventListener = new Proxy(EventTarget.prototype.addEventListener, {
+                apply: function(target, thisArg, [type, listener, opt]) {
+                    if (!type || !listener || typeof type !== 'string') {
+                        return target.apply(thisArg, [type, listener, opt]);
+                    }
+                    const typeLowerCase = type.toLowerCase();
+                    if (!eventTypeFilter.has(typeLowerCase)) {
+                        return target.apply(thisArg, [type, listener, opt]);
+                    }
+                    const thisArgSafe = thisArg || window;
+                    const capture = typeof opt === 'object' && opt !== null ? 'capture' in opt ? !!opt.capture : false : !!opt;
+                    const compositeKey = [thisArgSafe, typeLowerCase, listener, capture];
+                    const wrappedListener = listenerMap.get(compositeKey) || wrapListener(thisArg, listener);
+                    listenerMap.set(compositeKey, wrappedListener);
+                    return target.apply(thisArg, [type, wrappedListener, opt]);
+                }
+            });
+            EventTarget.prototype.removeEventListener = new Proxy(EventTarget.prototype.removeEventListener, {
+                apply: function(target, thisArg, [type, listener, opt]) {
+                    if (!type || typeof type !== 'string') {
+                        return target.apply(thisArg, [type, listener, opt]);
+                    }
+                    const typeLowerCase = type.toLowerCase();
+                    if (!eventTypeFilter.has(typeLowerCase)) {
+                        return target.apply(thisArg, [type, listener, opt]);
+                    }
+                    const thisArgSafe = thisArg || window;
+                    const capture = typeof opt === 'object' && opt !== null ? 'capture' in opt ? !!opt.capture : false : !!opt;
+                    const compositeKey = [thisArgSafe, typeLowerCase, listener, capture];
+                    const wrappedListener = listenerMap.get(compositeKey);
+                    if (wrappedListener) {
+                        listenerMap.delete(compositeKey);
+                        return target.apply(thisArg, [type, wrappedListener, opt]);
+                    } else {
+                        return target.apply(thisArg, [type, listener, opt]);
+                    }
+                }
+            });
+            const origGetClientRects = Element.prototype.getClientRects;
+            Element.prototype.getClientRects = function() {
+                const offset = window.__airfolder_width || 0;
+                const domRectList = [];
+                for (let r of origGetClientRects.call(this)) {
+                    domRectList.push(new DOMRect(r.x - offset, r.y, r.width, r.height));
+                }
+                domRectList.item = function(x) { return this[x]; };
+                domRectList.__proto__ = DOMRectList.prototype;
+                return domRectList;
+            };
+            const origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+            Element.prototype.getBoundingClientRect = function() {
+                const rect = origGetBoundingClientRect.call(this);
+                const offset = window.__airfolder_width || 0;
+                return new DOMRect(rect.x - offset, rect.y, rect.width, rect.height);
+            };
+        })();`;
 
         // Root element
         const anchorElement = document.createElement('airfolder');
@@ -557,7 +721,11 @@ const INIT = function() {
 
         // Use to speed up performance of closing the sidebar
         Sidebar.storeRootElement(anchorElement);
-        Sidebar.storeIframeElement(iframeElement);   
+        Sidebar.storeIframeElement(iframeElement);
+
+        // Add and remove <script> after it runs
+        anchorElement.appendChild(windowFunctionsScript);
+        anchorElement.removeChild(windowFunctionsScript);
     };
     injectSidebar();
 
