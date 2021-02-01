@@ -83,20 +83,24 @@
 
             return afTab;
         }
+        
+        // remove tab from tabs array
         remove(tabID, notify = true) {
             const afTab = this.tabs.get(tabID);
             if (!afTab) {                
                 return;
             }
             this.tabs.delete(tabID);            
-        }                
+        }
+
+        // notify sidebars of all tabs                
         notifyAll(method, params, excludeTabID = null) {
             for (let afTab of this.tabs.values()) {
                 if (afTab.id && afTab.id !== excludeTabID) {
                     afTab.sidebar.notify(method, params);
                 }
             }
-        }
+        }        
         setActiveTabs(tabs) {
             const inactiveTabIDs = new Set(this.activeTabIDs);
             for (let { id: tabID } of tabs) {
@@ -133,6 +137,7 @@
         callbacks = {};
         recievedMessageIDs = {};
 
+        // Post message or queue postmessage
         _post = (message) => {
             if (this.port && message) {
                 this.port.postMessage(message);
@@ -140,6 +145,8 @@
                 this.queuedPostMessages.push(message);
             }
         };
+
+        // Init Connection
         _initConnection = () => {
             try {
                 this.connectClient(this._callbackWithPort);
@@ -159,6 +166,7 @@
             }
         };
 
+        // Callback function
         _callbackWithPort = (port, bindMessageHandler = null) => {        
             this.port = port;
             if (!port) {            
@@ -192,6 +200,7 @@
             }
         };
 
+        // Handle request from messageListener
         _handleRequest = async(request) => {        
             const { id, method, params } = request;
             const response = {};
@@ -212,6 +221,7 @@
             }
         };
 
+        // Handle response from messageListener
         _handleResponse = (response) => {
             const { id, result, error } = response;        
             if (error) {
@@ -226,6 +236,7 @@
             }
         };
 
+        // MessageListener Channel
         _channelMessageListener = (message) => {        
             // handle heartbeats
             if (message.heartbeat) {
@@ -251,6 +262,7 @@
             }
         };
 
+        // Init variables and call connection
         connect(name, connectClient, options = {}) {    
             this.name = name;
             this.options = options;
@@ -258,6 +270,7 @@
             this._initConnection();
         }
 
+        // Notify function
         notify(method, params) {        
             const message = { method };
             if (params) {
@@ -279,7 +292,7 @@
     const initializeContentscriptConnection = function(port, afTab) {
         const { contentscript, id: tabID } = afTab;
 
-        // Connect
+        // Connect to contentscript
         const name = `${tabID}:contentscript`;
         contentscript.connect(name, callbackWithPort => callbackWithPort(port), {
             onDisconnect: () => {
@@ -318,7 +331,7 @@
         // Setup handlers
         bindSidebarHandlers(afTab);
 
-        // Connect
+        // Connect to Sidebar
         const { sidebar, id: tabID } = afTab;
         const name = `${tabID}:sidebar`;
         sidebar.connect(name, callbackWithPort => callbackWithPort(port), {
@@ -385,6 +398,7 @@
                 afTab.contentscript = new AirfolderMessageChannel();
                 afTab.sidebar = new AirfolderMessageChannel();
             }
+            // Initialize Sidebar Connection on afTab
             initializeSidebarConnection(port, afTab);
         }
 
@@ -406,12 +420,12 @@
             AF_TABS.setActiveTabs(tabs);
         });
     };
-    chrome.tabs.onActivated.addListener(updateActiveTab);
-    chrome.windows.onFocusChanged.addListener(updateActiveTab);
+    chrome.tabs.onActivated.addListener(updateActiveTab);           // Add listener: updateActiveTab when tab is active
+    chrome.windows.onFocusChanged.addListener(updateActiveTab);     // Add listener: updateActiveTab when activation is changed on window
 
     // Toggle Airfolder sidebar
-    chrome.browserAction.onClicked.addListener(function() {      
-
+    chrome.browserAction.onClicked.addListener(function() {
+        // When click extension icon, set view into expanded
         const newView = SIDEBAR_VIEW_STATES.expanded;
         setPreference(PREFERENCE_KEYS.DefaultSidebarView, newView);
         // Broadcast preference change to all nodes

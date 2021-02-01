@@ -12,17 +12,19 @@ if (DEBUG) {
     document.body.className += ' debug';
 }
 
+// MessageChannel Class for communicate with contentscript and backgroundscript
 class AirfolderMessageChannel {
-    name = null;
-    port = null;
-    queuedPostMessages = [];
+    name = null;     // page title
+    port = null;     // page port
+    queuedPostMessages = [];    // queued Messages
     handlers = {};
-    reconnectBackoffIter = null;
+    reconnectBackoffIter = null; 
     connectClient = null;
     options = {};
     callbacks = {};
     recievedMessageIDs = {};
 
+    // Post message or queue postmessage
     _post = (message) => {
         if (this.port && message) {
             this.port.postMessage(message);
@@ -30,6 +32,7 @@ class AirfolderMessageChannel {
             this.queuedPostMessages.push(message);
         }
     };
+    // Init connection
     _initConnection = () => {
         try {
             this.connectClient(this._callbackWithPort);
@@ -48,39 +51,39 @@ class AirfolderMessageChannel {
             }
         }
     };
-
+    
+    // Callback with Port
     _callbackWithPort = (port, bindMessageHandler = null) => {        
         this.port = port;
         if (!port) {            
             console.log('missing_connection_port')
         }
         if (bindMessageHandler) {
-            bindMessageHandler(this._channelMessageListener);
+            bindMessageHandler(this._channelMessageListener);    // bind message handler with channelMessageListener
         } else {
-            this.port.onMessage.addListener((message) => {
+            this.port.onMessage.addListener((message) => {       // Add listner for sending the message
                 if (message) {
-                    this.reconnectBackoffIter = null;                    
+                    this.reconnectBackoffIter = null;                   
                     this._channelMessageListener(message);
                 }
             });
-            this.port.onDisconnect.addListener(() => {
+            this.port.onDisconnect.addListener(() => {           // Add listner when port is disconnected
                 this.port = null;
-                if (this.options.onDisconnect) {                    
+                if (this.options.onDisconnect) {
                     this.options.onDisconnect();
                 }
                 window.location.reload();
             });
         }
     };
-
-    _handleRequest = async(request) => {        
+    _handleRequest = async(request) => {                             // Handle Request
         const { id, method, params } = request;
         const response = {};
         try {
-            if (!(method in this.handlers)) {                
+            if (!(method in this.handlers)) {
                 console.log('unhandled_method ' + method)
             }
-            response.result = await this.handlers[method](params);
+            response.result = await this.handlers[method](params);   // Call related handler
         } catch (e) {
             response.error = {
                 code: e.code,
@@ -93,21 +96,21 @@ class AirfolderMessageChannel {
         }
     };
 
-    _handleResponse = (response) => {
+    _handleResponse = (response) => {                               // Handle response
         const { id, result, error } = response;        
         if (error) {
             console.log(`error from [${this.name}]:`, error);
         } else if (!(id in this.callbacks)) {
             console.log(`got response with id: ${id} without callback`);
         } else {
-            const { callback, timerID } = this.callbacks[id];
+            const { callback, timerID } = this.callbacks[id];      // Get callback and timerId from Callbacks array
             clearTimeout(timerID);            
             delete this.callbacks[id];
             callback(result, error);
         }
     };
 
-    _channelMessageListener = (message) => {        
+    _channelMessageListener = (message) => {                      // MessageListener Channel
         // handle heartbeats
         if (message.heartbeat) {
             if (message.heartbeat === 'pong') {
@@ -132,13 +135,15 @@ class AirfolderMessageChannel {
         }
     };
 
-    connect(name, connectClient, options = {}) {    
+    // Init variables and call connection
+    connect(name, connectClient, options = {}) {
         this.name = name;
         this.options = options;
         this.connectClient = connectClient;
         this._initConnection();
     }
 
+    // Notify message
     notify(method, params) {        
         const message = { method };
         if (params) {
@@ -157,7 +162,7 @@ class AirfolderMessageChannel {
     }
 }
 
-const Sidebar = new class {
+const Sidebar = new class {    // Sidebar Class for managing everything on sidebar
     VIEW_STATES = {
         expanded: 'expanded',
         hidden: 'hidden',
@@ -171,19 +176,20 @@ const Sidebar = new class {
     initComplete() {
         this.connected = true;
     };
-    setView(view, options) {
+    setView(view, options) {      // Set view mode
         if (!this.VIEW_STATES[view] || view === this.settings.view) return;        
         this.settings.view = view;
 
-        // Bubble state
+        // Send view mode to contentscript
         if (!options || options.notifyContentscript !== false) {
             ContentscriptChannel.notify('set-view', { view });
         }
+        // Send view mode to background
         if (!options || options.notifyBackground !== false) {
             BackgroundChannel.notify('set-default-view', { view });
         }
     }
-    setZoom(zoom) {       
+    setZoom(zoom) {       // Set zoom 
         this.settings.zoom = zoom;
         document.documentElement.style.zoom = zoom;
     }    
@@ -200,26 +206,26 @@ BackgroundChannel.on('set-view', ({ view }) => {
     });
 });
 
+// Update Sidebar to zoom
 BackgroundChannel.on('set-zoom', ({ zoom }) => {
-    console.log('background zoom')
     Sidebar.setZoom(zoom);
 });
 
-// Connect
+// Connect with Background
 BackgroundChannel.connect('background', callbackWithPort => {
     const port = chrome.runtime.connect({ name: `AF_SB/${INIT.page_id}` });
     callbackWithPort(port);
 }, {
     autoReconnect: true,   
     onConnectionError: () => {
-        document.location.reload();
+        document.location.reload();  // Reload if there is error in connection
     },
 });
 
 // Setup ContentScript channel
 const ContentscriptChannel = new AirfolderMessageChannel();
 
-// Connect
+// Connect with ContentScript
 ContentscriptChannel.connect('contentscript', callbackWithPort => {
     const channel = new MessageChannel();
     const port = channel.port1;
@@ -238,15 +244,16 @@ Sidebar.setView(INIT.view, {
     notifyBackground: false,
 });
 
+// Sidebar Vue Component
 Views.sidebar = new Vue({
-    el: '#sidebar',
+    el: '#sidebar',         // find the element with id
     render(e) {
         return e('div', {
             attrs: { id: 'sidebar' },
             on: {
-                click: function() {
-                    const view = Sidebar.VIEW_STATES.hidden;
-                    Sidebar.setView(view);
+                click: function() {     // Action when click on Sidebar
+                    const view = Sidebar.VIEW_STATES.hidden;        // Hide left-sidebar
+                    Sidebar.setView(view);         // Call setView function to inform view mode to contentscript & backgroundscript
                 }                
             }
         });
