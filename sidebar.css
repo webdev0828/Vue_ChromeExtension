@@ -30,8 +30,7 @@ html.collapsed.loaded {
 
 html,
 body,
-iframe,
-h2 {
+iframe {
     margin: 0;
     border: 0;
     padding: 0;
@@ -48,83 +47,8 @@ body {
     overflow: hidden;
 }
 
-
-#frame {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
 #sidebar {
     width: 100%;
     height: 100%;
     background: green;
 }
-
-@keyframes slide-in {
-    0% {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    100% {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@-webkit-keyframes strokeanim {
-    0% {
-        stroke-dasharray: 1, 300;
-        stroke-dashoffset: 0;
-    }
-
-    50% {
-        stroke-dasharray: 120, 300;
-        stroke-dashoffset: -58.548324585;
-    }
-
-    100% {
-        stroke-dasharray: 120, 300;
-        stroke-dashoffset: -175.6449737549;
-    }
-}
-
-@keyframes strokeanim {
-    0% {
-        stroke-dasharray: 1, 300;
-        stroke-dashoffset: 0;
-    }
-
-    50% {
-        stroke-dasharray: 120, 300;
-        stroke-dashoffset: -58.548324585;
-    }
-
-    100% {
-        stroke-dasharray: 120, 300;
-        stroke-dashoffset: -175.6449737549;
-    }
-}
-
-@-webkit-keyframes contanim {
-    100% {
-        -webkit-transform: rotate(360deg);
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes contanim {
-    100% {
-        -webkit-transform: rotate(360deg);
-        transform: rotate(360deg);
-    }
-}
-
-@media (prefers-color-scheme: no-preference) {}
-
-@media (prefers-color-scheme: dark) {}
-
-@media (prefers-color-scheme: light) {}
-
-
-/* TODO: going to add a progress loading thing before we have data from the filesystem (its not instantaneous) */
