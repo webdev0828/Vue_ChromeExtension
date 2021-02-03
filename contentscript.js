@@ -357,18 +357,26 @@ const INIT = function() {
         }
 
         // Update specific classname to fixed element
-        styleFixedElement(element, computedStyle = null) {
-            const { hasFixedPosition, leftPx } = this.getFixedPosition(element, computedStyle);
+        styleFixedElement(element, computedStyle = null) {            
+            const { hasFixedPosition, leftPx, rightPx } = this.getFixedPosition(element, computedStyle);
             if (!hasFixedPosition) {
                 if (element.classList.contains(StyleClass.FixedElement)) {                    
                     element.classList.remove(StyleClass.FixedElement, ...this.classes);
                 }
             } else if (!element.classList.contains(StyleClass.FixedElement)) {
-                if (leftPx !== null) {
-                    const leftClass = this.getLeftClass(leftPx);
-                    element.classList.add(StyleClass.FixedElement, leftClass);
-                } else {
-                    element.classList.add(StyleClass.FixedElement);
+                if (leftPx !== null) {                    
+                    if(rightPx >= leftPx) {
+                        const leftClass = this.getLeftClass(leftPx);
+                        element.classList.add(StyleClass.FixedElement, leftClass);
+                    }
+                    if(rightPx < 0) {
+                        element.classList.add(StyleClass.FixedElement);
+                    }
+                } else {                    
+                    const hasMaxWidth = this.getMaxWidth(element, computedStyle);
+                    if(!hasMaxWidth)  {
+                        element.classList.add(StyleClass.FixedElement);
+                    }       
                 }
             }
         }
@@ -383,16 +391,34 @@ const INIT = function() {
         getFixedPosition(element, prevComputedStyle = null) {
             const computedStyle = prevComputedStyle || getComputedStyle(element, null);
             const leftPx = parseFloat(computedStyle.getPropertyValue('left')); // always returns as px
-            return {
-                hasFixedPosition: computedStyle.getPropertyValue('position') === 'fixed',
-                leftPx: leftPx < Sidebar.getWidth() ? leftPx : null, // ignore unless less than sidebar
-            };
+            const rightPx = parseFloat(computedStyle.getPropertyValue('right')); // always returns as px            
+
+            if(Util.hasClassName(element, 'not_fixed')) {
+                return {
+                    hasFixedPosition: computedStyle.getPropertyValue('position') === 'fixed',
+                    leftPx: leftPx < Sidebar.getWidth() ? leftPx : null, // ignore unless less than sidebar
+                    rightPx: rightPx
+                };
+            } else {
+                return {
+                    hasFixedPosition: computedStyle.getPropertyValue('position') === 'fixed',
+                    leftPx: leftPx,
+                    rightPx: rightPx            
+                };
+            }
+            
+        }
+
+        getMaxWidth(element, prevComputedStyle = null) {
+            const computedStyle = prevComputedStyle || getComputedStyle(element, null);
+            const maxWidth = parseFloat(computedStyle.getPropertyValue('max-width')); // always returns as px
+            return maxWidth;
         }
 
         // Get left classname
-        getLeftClass(leftPx) {
+        getLeftClass(leftPx, rightPx) {
             const className = `af_fixed_${leftPx}`.replace('.', '_');
-            if (!this.classes.has(className)) {
+            if (!this.classes.has(className) && leftPx !== 50 && rightPx !== 0) {
                 // Append class style to stylesheet
                 const ruleValue = `calc(${leftPx}px + ${this.cssValueOffset})`;
                 const rule = `:root[${StyleClass.AttributeVisible}] .${className} { left: ${ruleValue} !important; }`;
@@ -413,7 +439,7 @@ const INIT = function() {
         }
         :root[${StyleClass.AttributeVisible}] {
             ${StyleClass.WidthVariable}: ${Sidebar.EXPANDED_WIDTH}px;
-            display: flex; /* collapse margins */
+            /* display: flex; collapse margins */
             flex-direction: column; /* correct spacing */
             transform: none !important; /* breaks fixed position otherwise */
             padding-top: 0 !important;
@@ -451,7 +477,8 @@ const INIT = function() {
             background-image: none;
         }
         :root[${StyleClass.AttributeVisible}] {
-            width: calc(100vw - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px)) !important;
+            width: calc(100% - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px)) !important;
+            min-width: calc(100% - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px)) !important;
             position: relative !important;
             left: var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px) !important;
         }
@@ -490,12 +517,12 @@ const INIT = function() {
             transition: opacity 0.3s, left 0.3s;
             pointer-events: auto;
         }
-        :root[${StyleClass.AttributeVisible}] .${StyleClass.FixedElement} {
-            max-width: calc(100vw - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px));
-        }
         :root[${StyleClass.AttributeVisible}] > airfolder > iframe.${StyleClass.Iframe}.${StyleClass.HoverExtended} {
             width: ${Sidebar.EXPANDED_WIDTH}px;
             transition: width 0s;
+        }
+        :root[${StyleClass.AttributeVisible}] .${StyleClass.FixedElement} {
+            max-width: calc(100% - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px));
         }
     `;
 
@@ -732,12 +759,29 @@ const INIT = function() {
         Sidebar.storeIframeElement(iframeElement);
 
         // Add and remove <script> after it runs
-        anchorElement.appendChild(windowFunctionsScript);
-        anchorElement.removeChild(windowFunctionsScript);
+        // anchorElement.appendChild(windowFunctionsScript);
+        // anchorElement.removeChild(windowFunctionsScript);
     };
+
+    const setAbsoluteClass = () => {
+        const elements = document.getElementsByTagName('*')
+        for (let element of elements) {
+            const computedStyle = getComputedStyle(element, null);
+            if (computedStyle.getPropertyValue('position') !== 'fixed') {
+                if(element.className && typeof(element.className) === 'string' && !element.className.includes('not_fixed')) 
+                    Util.addClassNameToElement(element, 'not_fixed')
+            }
+        }
+    }
 
     // Inject Sidebar on page
     injectSidebar();
+
+    document.onreadystatechange = () => {
+        if (document.readyState === 'complete') {
+            setAbsoluteClass();
+        }
+    };
 
     // Seen by user allows us to know if the sidebar has ever been visble
     // Means we can't change it's view going forward.
