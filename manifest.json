@@ -27,18 +27,15 @@
     "content_security_policy": "script-src 'self'; object-src 'self'",
     "browser_action": {},
     "content_scripts": [{
-        "js": ["contentscript.js"],
+        "js": ["lib/vue.runtime.2.6.10.js", "contentscript.js"],
         "matches": ["<all_urls>"],
         "all_frames": false,
-        "run_at": "document_start"
+        "css": ["style.css"]
     }],
     "background": {
         "scripts": [
             "background.js"
         ],
         "persistent": true
-    },
-    "web_accessible_resources": [
-        "sidebar.html"
-    ]
+    }
 }

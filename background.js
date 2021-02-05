@@ -34,6 +34,7 @@
             }), {}),
         },       
     };
+
     const AF = JSON.parse(JSON.stringify(DEFAULT_AF));
 
     class AFTab {
@@ -43,7 +44,6 @@
         url = null;
         title = null;
         icon = null;
-        sidebar = null; // chrome.runtime message channel with sidebar
         contentscript = null; // chrome.runtime message channel with contentscript
     }
 
@@ -90,17 +90,9 @@
             if (!afTab) {                
                 return;
             }
-            this.tabs.delete(tabID);            
+            this.tabs.delete(tabID);        
         }
 
-        // notify sidebars of all tabs                
-        notifyAll(method, params, excludeTabID = null) {
-            for (let afTab of this.tabs.values()) {
-                if (afTab.id && afTab.id !== excludeTabID) {
-                    afTab.sidebar.notify(method, params);
-                }
-            }
-        }        
         setActiveTabs(tabs) {
             const inactiveTabIDs = new Set(this.activeTabIDs);
             for (let { id: tabID } of tabs) {
@@ -150,9 +142,6 @@
         _initConnection = () => {
             try {
                 this.connectClient(this._callbackWithPort);
-                if (this.options.heartbeat) {
-                    this._setupHeartbeat();
-                }
                 // Execute queued messages
                 let message;
                 while (message = this.queuedPostMessages.pop()) {
@@ -304,44 +293,9 @@
         });
 
         const result = {
-            active: AF_TABS.activeTabIDs.has(tabID),
-            view: AF.PREFERENCES.values[PREFERENCE_KEYS.DefaultSidebarView],
+            active: AF_TABS.activeTabIDs.has(tabID)
         };
         contentscript.notify('init', result);
-    };
-
-    const bindSidebarHandlers = function(afTab) {
-        const { sidebar, id: tabID } = afTab;
-        
-        sidebar.on('set-default-view', ({ view }) => {
-            // Closing from X in top right
-            setPreference(PREFERENCE_KEYS.DefaultSidebarView, view);
-            // Broadcast preference change to all nodes
-            for (let afTab of AF_TABS.tabs.values()) {
-                // Send only to tabs not seen by users
-                if (afTab.id !== tabID && !afTab.seenByUser && afTab.sidebar && afTab.contentscript) {
-                    afTab.sidebar.notify('set-view', { view });
-                    afTab.contentscript.notify('set-view', { view });
-                }
-            }
-        });        
-    };
-
-    const initializeSidebarConnection = async function(port, afTab) {
-        // Setup handlers
-        bindSidebarHandlers(afTab);
-
-        // Connect to Sidebar
-        const { sidebar, id: tabID } = afTab;
-        const name = `${tabID}:sidebar`;
-        sidebar.connect(name, callbackWithPort => callbackWithPort(port), {
-            onDisconnect: () => {
-                // Might have already been disconnected
-                if (AF_TABS.tabs.has(tabID)) {
-                    AF_TABS.remove(tabID);
-                }
-            },
-        });
     };
 
     const originZoomFactorMap = new Map(); // [origin] +--+ zoomFactor
@@ -361,13 +315,11 @@
                     // Let all sidebars and contentscripts with the same origin get new zoom factor
                     for (let afTab of AF_TABS.tabs.values()) {
                         if (afTab.origin === afTabZoomChange.origin && afTab.sidebar && afTab.contentscript) {
-                            afTab.sidebar.notify('set-zoom', { zoom: zoomFactor });
                             afTab.contentscript.notify('set-zoom', { zoom: zoomFactor });
                         }
                     }
                 }
             } else if (scope === 'per-tab') {
-                afTab.sidebar.notify('set-zoom', { zoom: zoomFactor });
                 afTab.contentscript.notify('set-zoom', { zoom: zoomFactor });
             }
         }
@@ -376,7 +328,7 @@
     // Setup both SidebarChannel and ContentScript channels
     chrome.runtime.onConnect.addListener(async function(port) {
         const { name, sender } = port;
-        const { id: runtimeID, tab, frameId } = sender;
+        const { id: runtimeID, tab } = sender;
         const tabID = tab.id;
         if (runtimeID !== chrome.runtime.id) {
             return; // not our extension
@@ -388,18 +340,7 @@
             // Create new tab
             const afTab = AF_TABS.store(tab, pageID);
             afTab.contentscript = new AirfolderMessageChannel();
-            afTab.sidebar = new AirfolderMessageChannel();
             initializeContentscriptConnection(port, afTab);
-        } else if (source === 'AF_SB') { // ensure cs and sb are in sync
-            // Grab existing tab
-            let afTab = AF_TABS.find(tabID);
-            if (!afTab) {               
-                afTab = AF_TABS.store(tab, null);
-                afTab.contentscript = new AirfolderMessageChannel();
-                afTab.sidebar = new AirfolderMessageChannel();
-            }
-            // Initialize Sidebar Connection on afTab
-            initializeSidebarConnection(port, afTab);
         }
 
         // Fetch current zoom factor
@@ -408,7 +349,6 @@
             if (afTab && afTab.sidebar && afTab.contentscript) {
                 const newZoomFactor = 1 / zoomFactor;
                 originZoomFactorMap.set(afTab.origin, newZoomFactor);
-                afTab.sidebar.notify('set-zoom', { zoom: newZoomFactor });
                 afTab.contentscript.notify('set-zoom', { zoom: newZoomFactor });
             }
         });
@@ -423,15 +363,14 @@
     chrome.tabs.onActivated.addListener(updateActiveTab);           // Add listener: updateActiveTab when tab is active
     chrome.windows.onFocusChanged.addListener(updateActiveTab);     // Add listener: updateActiveTab when activation is changed on window
 
-    // Toggle Airfolder sidebar
+    // Toggle Airfolder
     chrome.browserAction.onClicked.addListener(function() {
         // When click extension icon, set view into expanded
         const newView = SIDEBAR_VIEW_STATES.expanded;
-        setPreference(PREFERENCE_KEYS.DefaultSidebarView, newView);
+        setPreference(PREFERENCE_KEYS.DefaultSidebarView, newView);        
         // Broadcast preference change to all nodes
         for (let afTab of AF_TABS.tabs.values()) {
-            if (afTab.sidebar && afTab.contentscript) {
-                afTab.sidebar.notify('set-view', { view: newView });
+            if (afTab.contentscript) {
                 afTab.contentscript.notify('set-view', { view: newView });
             }
         }
