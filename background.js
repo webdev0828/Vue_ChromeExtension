@@ -314,7 +314,7 @@
                     originZoomFactorMap.set(afTabZoomChange.origin, zoomFactor);
                     // Let all sidebars and contentscripts with the same origin get new zoom factor
                     for (let afTab of AF_TABS.tabs.values()) {
-                        if (afTab.origin === afTabZoomChange.origin && afTab.sidebar && afTab.contentscript) {
+                        if (afTab.origin === afTabZoomChange.origin && afTab.contentscript) {
                             afTab.contentscript.notify('set-zoom', { zoom: zoomFactor });
                         }
                     }

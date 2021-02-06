@@ -112,11 +112,9 @@ const INIT = function() {
     const StyleClass = {
         Iframe: 'airfolder-iframe',
         AttributeVisible: 'airfolder',
-        AttributeCollapsed: 'collapsed',
         FixedElement: 'airfolder-fixed',
         WidthVariable: '--airfolder-width',
-        LoadedAttribute: 'loaded',
-        HoverExtended: 'hover-extended',
+        LoadedAttribute: 'loaded'
     };
 
     // Sidebar Class for managing everything on Sidebar
@@ -147,10 +145,6 @@ const INIT = function() {
             this.sidebarElement = null;
             this.seenByUser = false;            
         }
-        getURL() {
-            // Get sidebar html file
-            return chrome.runtime.getURL('sidebar.html');
-        }
         storeRootElement(anchorElement) {
             // Store root element
             this.rootElement = anchorElement;
@@ -161,22 +155,27 @@ const INIT = function() {
         }
         persist(options) {
             // Persist locally for this domain
-            console.log('persist:', this.settings)
+            console.log('PersistSettings:', this.settings)
             Util.setCookie({
                 name: this.cookieName,
                 value: window.btoa(JSON.stringify(this.settings)),
                 tail: `${this.cookieTail} ${this.maxAge}`,
             });
 
-            const cookieValue = Util.getCookie(this.cookieName);
+            // let parsedSettings;
+            // const cookieValue = Util.getCookie(this.cookieName);
 
-            const parsedSettings = JSON.parse(window.atob(cookieValue));
-            console.log('updated cookie', parsedSettings)
+            // console.log('cookieValue', cookieValue)
+            // if (cookieValue) {
+            //     try {
+            //         parsedSettings = JSON.parse(window.atob(cookieValue));
+            //     } catch (_) {
+            //         console.log('invalid cached settings. resetting...');
+            //     }
+            // }
+            
+            // console.log('PersistParsed:', parsedSettings)
 
-            // Propigate view state
-            if (!options || options.notifySidebar !== false) {
-                SidebarChannel.notify('set-view', { view: this.settings.view });
-            }
             if (!options || options.notifyBackground !== false) {
                 BackgroundChannel.notify('set-default-view', { view: this.settings.view });
             }
@@ -185,8 +184,7 @@ const INIT = function() {
             // Apply view & zoom settings
             if ('view' in overrideSettings) {
                 Sidebar.setView(overrideSettings.view, {
-                    notifyBackground: false,
-                    notifySidebar: false,
+                    notifyBackground: false
                 });
             }
             if ('zoom' in overrideSettings) {
@@ -197,14 +195,15 @@ const INIT = function() {
             // Load local domain specific values first (this is an performance optimization and saves ~50ms)
             let parsedSettings;
             const cookieValue = Util.getCookie(this.cookieName);
+            console.log('cookievalue', cookieValue)
             if (cookieValue) {
                 try {
                     parsedSettings = JSON.parse(window.atob(cookieValue));
-                    console.log('loadSettings:', parsedSettings)
                 } catch (_) {
                     console.log('invalid cached settings. resetting...');
                 }
             }
+            console.log(parsedSettings)
             if (parsedSettings) {
                 this.applySettings(parsedSettings);
             } else {
@@ -218,10 +217,10 @@ const INIT = function() {
         }
         setView(view, options) {            
             if (!this.VIEW_STATES[view] || view === this.settings.view) return;
+
+            console.log(view)
             
             this.settings.view = view;
-
-            console.log('settings:', this.settings.view)
 
             // [CSS] Add visible attribute
             if (view === this.VIEW_STATES.hidden) {
@@ -244,8 +243,6 @@ const INIT = function() {
             const width = this.getWidth();
             const widthPx = `${width}px`;
 
-            console.log('setWidth:', width)
-
             // Apply style quickly before css rules take affect
             if (this.rootElement) {
                 this.rootElement.style.left = `-${widthPx}`;
@@ -253,13 +250,7 @@ const INIT = function() {
             }
 
             // Set :root style variable
-            document.documentElement.style.setProperty('--airfolder-width', widthPx);
-
-            // Set client window variable to reflect changes in events
-            const windowScript = document.createElement('script');
-            windowScript.text = `window.__airfolder_width = ${width};`;
-            document.documentElement.appendChild(windowScript);
-            document.documentElement.removeChild(windowScript);
+            document.documentElement.style.setProperty('--airfolder-width', widthPx);           
 
             // Issue resize event to page (in case it's listening to readjust)
             window.dispatchEvent(new Event('resize'));
@@ -278,8 +269,7 @@ const INIT = function() {
             
             // Persist
             this.persist({
-                notifyBackground: false,
-                notifySidebar: false,
+                notifyBackground: false
             });
         }
 
@@ -343,7 +333,6 @@ const INIT = function() {
             }
         }
         
-        // Explore document.all
         // Check if there is some property that allows us to filter _some_ portion of non-fixed elements
         findNewFixedElements() {
             if (document.body) {                
@@ -366,23 +355,23 @@ const INIT = function() {
         }
 
         // Update specific classname to fixed element
-        styleFixedElement(element, computedStyle = null) {            
+        styleFixedElement(element, computedStyle = null) {               
             const { hasFixedPosition, leftPx, rightPx } = this.getFixedPosition(element, computedStyle);
             if (!hasFixedPosition) {
                 if (element.classList.contains(StyleClass.FixedElement)) {                    
                     element.classList.remove(StyleClass.FixedElement, ...this.classes);
                 }
-            } else if (!element.classList.contains(StyleClass.FixedElement)) {
+            } else if (!element.classList.contains(StyleClass.FixedElement)) {                
                 if (leftPx !== null) {                    
                     if(rightPx >= leftPx) {
                         const leftClass = this.getLeftClass(leftPx);
                         element.classList.add(StyleClass.FixedElement, leftClass);
                     }
-                    if(rightPx < 0) {
+                    if(rightPx < 0 && rightPx >= - 50) {
                         element.classList.add(StyleClass.FixedElement);
                     }
                 } else {                    
-                    const hasMaxWidth = this.getMaxWidth(element, computedStyle);
+                    const hasMaxWidth = this.getMaxWidth(element, computedStyle);                    
                     if(!hasMaxWidth)  {
                         element.classList.add(StyleClass.FixedElement);
                     }       
@@ -466,7 +455,7 @@ const INIT = function() {
             left: -20px;
             background-color: #FFF;
         }
-        :root > airfolder > ${StyleClass.Iframe} {
+        :root > airfolder > .${StyleClass.Iframe} {
             position: fixed !important;
             top: 0 !important;
             width: var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px);
@@ -481,7 +470,7 @@ const INIT = function() {
         :root > airfolder[${StyleClass.LoadedAttribute}] {
             border-right: none;
         }
-        :root > airfolder[${StyleClass.LoadedAttribute}] > ${StyleClass.Iframe} {
+        :root > airfolder[${StyleClass.LoadedAttribute}] > .${StyleClass.Iframe} {
             background-color: transparent;
             background-image: none;
         }
@@ -520,17 +509,13 @@ const INIT = function() {
             font-size: 16px;
             margin-top: 30px;
         }
-        :root[${StyleClass.AttributeVisible}] > airfolder > ${StyleClass.Iframe} {
+        :root[${StyleClass.AttributeVisible}] > airfolder > .${StyleClass.Iframe} {
             left: 0;
             transition: opacity 0.3s, left 0.3s;
             pointer-events: auto;
         }
-        :root[${StyleClass.AttributeVisible}] > airfolder > ${StyleClass.Iframe}.${StyleClass.HoverExtended} {
-            width: ${Sidebar.EXPANDED_WIDTH}px;
-            transition: width 0s;
-        }
         :root[${StyleClass.AttributeVisible}] .${StyleClass.FixedElement} {
-            max-width: calc(100% - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px));
+            max-width: calc(100% - var(${StyleClass.WidthVariable}, ${Sidebar.EXPANDED_WIDTH}px))!important;
         }
     `;
 
@@ -538,44 +523,7 @@ const INIT = function() {
     Sidebar.loadSettings();
 
     const injectSidebar = function() {
-        // Compose initial properties to pass to iframe
-        const location = document.location;
-        const hashParams = '#' + encodeURIComponent(JSON.stringify({
-            zoom: Sidebar.getZoom(),
-            view: Sidebar.getView(),
-            page_id: AF_PAGE_ID,
-            title: document.title,
-            url: location.href + location.hash,
-        }));
-
-        console.log('getView', Sidebar.getView())
-        console.log('getZoom', Sidebar.getZoom())
-
-        // Sidebar.setZoom(Sidebar.getZoom());
-        // Sidebar.setView(Sidebar.getView(), {
-        //     notifyContentscript: false,
-        //     notifyBackground: false,
-        // });
-
-        // Skip XML files (for now)
-        if (document.contentType === 'application/xml') {
-            return;
-        }
-
-        // Detect PDF files
-        if (document.contentType === 'application/pdf') {
-            // TODO: Don't do extra work on these pages (i.e., monitor fixed elements)
-            // TODO: Get title and set top window
-            document.write(`
-            <body style="padding: 0; margin: 0;">
-              <object type="application/pdf" data="${document.location.href}" style="border: none; width: 100%; height: 100vh;"></object>
-            </body>
-            `);
-
-            window.stop();
-        }
-
-        // Body, anchor, iframe and toggle styles
+        // Body, anchor, Sidebar and toggle styles
         const styleElement = document.createElement('style');
         styleElement.innerHTML = AIRFOLDER_STYLES;
 
@@ -751,7 +699,7 @@ const INIT = function() {
         // Root element
         const anchorElement = document.createElement('airfolder');
 
-        // <iframe> element
+        // <Sidebar> element
         const sidebarElement = document.createElement('div');
         sidebarElement.setAttribute('id', 'airfolder_sidebar')
         sidebarElement.className = StyleClass.Iframe;
@@ -759,7 +707,6 @@ const INIT = function() {
         sidebarElement.addEventListener('load', () => {
             anchorElement.setAttribute(StyleClass.LoadedAttribute, '');
         });
-        sidebarElement.src = Sidebar.getURL() + hashParams;
         anchorElement.appendChild(styleElement);
         anchorElement.appendChild(sidebarElement);
 
@@ -775,6 +722,10 @@ const INIT = function() {
         // Use to speed up performance of closing the sidebar
         Sidebar.storeRootElement(anchorElement);
         Sidebar.storeSidebarElement(sidebarElement);
+
+         // Add and remove <script> after it runs
+        // anchorElement.appendChild(windowFunctionsScript);
+        // anchorElement.removeChild(windowFunctionsScript);
     };
 
     const setAbsoluteClass = () => {
@@ -972,9 +923,7 @@ const INIT = function() {
     // Update sidebar view state
     BackgroundChannel.on('set-view', ({ view }) => {
         // Don't send value back to either sidebar or bg
-        console.log('background channel', view)
         Sidebar.setView(view, {
-            notifySidebar: false,
             notifyBackground: false,
         });
     });
@@ -990,32 +939,6 @@ const INIT = function() {
         callbackWithPort(port);
     }, { autoReconnect: true });
 
-    // Setup sidebar channel
-    const SidebarChannel = new AirfolderMessageChannel();
-
-    // Update sidebar view state
-    SidebarChannel.on('set-view', ({ view }) => {
-        // Don't send value back to either
-        console.log('SidebarChannel', view)
-        Sidebar.setView(view, {
-            notifySidebar: false,
-            notifyBackground: false,
-        });
-    });
-
-    // Connect to sidebar  
-    window.addEventListener('message', function(e) {
-        if (e.origin === EXTENSION.origin && e.data === `AF_SB/${AF_PAGE_ID}` && e.ports.length) {
-            SidebarChannel.connect('sidebar', callbackWithPort => {
-                console.log('connect to sidebar on contentscript')
-                const port = e.ports[0];
-                callbackWithPort(port, bindMessageHandler => {
-                    port.onmessage = event => bindMessageHandler(event.data);
-                });
-            });
-        }
-    }, false);
-
     // Setup full screen events (sidebar can't be open during fullscreen)
     const monitorFullscreenChange = function() {
         let previousViewState = null;
@@ -1025,14 +948,12 @@ const INIT = function() {
                 previousViewState = Sidebar.getView();
                 if (previousViewState !== Sidebar.VIEW_STATES.hidden) {
                     Sidebar.setView(Sidebar.VIEW_STATES.hidden, {
-                        notifyBackground: false,
-                        notifySidebar: false,
+                        notifyBackground: false
                     });
                 }
             } else if (previousViewState && previousViewState !== Sidebar.VIEW_STATES.hidden) {
                 Sidebar.setView(previousViewState, {
-                    notifyBackground: false,
-                    notifySidebar: false,
+                    notifyBackground: false
                 });
                 previousViewState = null;
             }
@@ -1044,7 +965,7 @@ const INIT = function() {
         el: '#airfolder_sidebar',         // find the element with id
         render(e) {
             return e('div', {
-                attrs: { id: 'airfolder_sidebar', class: 'airfolder-iframe' },
+                attrs: { id: 'airfolder_sidebar', class: 'airfolder-iframe', style: 'background: green' },
                 on: {
                     click: function() {     // Action when click on Sidebar
                         const view = Sidebar.VIEW_STATES.hidden;        // Hide left-sidebar
@@ -1064,5 +985,3 @@ if (!location.ancestorOrigins.contains(EXTENSION.origin) && window.top === windo
         console.log('error:', error);
     }
 }
-
-
